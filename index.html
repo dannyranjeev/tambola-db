@@ -1,0 +1,1457 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Tambola — Online Game</title>
+    <meta name="description"
+        content="A real-time online Tambola (Housie) game with cross-device sync, customizable prizes, and QR code joining." />
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Supabase JS SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- QR Code Generator -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+
+    <style>
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.25);
+            --glass-border: rgba(255, 255, 255, 0.4);
+            --teal-1: #06b6d4;
+            --teal-2: #14b8a6;
+            --teal-dark: #044e54;
+            --gold: #fbbf24;
+        }
+
+        body {
+            background: linear-gradient(135deg, #dffaf6 0%, #c8f7f1 40%, #bfeeee 100%);
+            min-height: 100vh;
+            margin: 0;
+            font-family: 'Inter', ui-sans-serif, system-ui;
+            color: #044e54;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px) saturate(120%);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px rgba(6, 182, 212, 0.1);
+        }
+
+        .number-cell {
+            transition: all .28s ease;
+            user-select: none;
+        }
+
+        .uncalled {
+            background: rgba(255, 255, 255, 0.4);
+            color: #334155;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+        .called {
+            background: linear-gradient(135deg, #a7f3d0, #5eead4);
+            color: #0f5132;
+            font-weight: 700;
+            box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.4);
+        }
+
+        .current {
+            background: linear-gradient(135deg, #c8f7f1, #2dd4bf);
+            color: #0f766e;
+            font-weight: 800;
+            border: 2px solid #0d9488;
+            transform: scale(1.1);
+            z-index: 10;
+            box-shadow: 0 4px 12px rgba(13, 148, 136, 0.3);
+        }
+
+        .screen {
+            display: none !important;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .screen.active {
+            display: flex !important;
+            opacity: 1;
+        }
+
+        .special-prize {
+            background: linear-gradient(135deg, #06b6d4, #14b8a6, #0d9488);
+            color: white;
+            padding: 12px 18px;
+            border-radius: 14px;
+            font-weight: 800;
+            box-shadow: 0 6px 18px rgba(6, 182, 212, 0.25);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: .2s ease;
+            animation: slideInLeft 0.5s ease;
+        }
+
+        .special-prize:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(6, 182, 212, 0.35);
+        }
+
+        .prize-card-basic {
+            background: rgba(255, 255, 255, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            color: #115e59;
+            animation: slideInLeft 0.5s ease;
+        }
+
+        .prize-card-basic.claimed {
+            background: linear-gradient(90deg, #ccfbf1, #99f6e4);
+            border-left: 5px solid #0d9488;
+            color: #0f766e;
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0px);
+            }
+
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .float-anim {
+            animation: float 4s ease-in-out infinite;
+        }
+
+        @keyframes popIn {
+            0% {
+                transform: scale(0.5);
+                opacity: 0;
+            }
+
+            70% {
+                transform: scale(1.1);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .pop-in {
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        @keyframes slideInLeft {
+            from {
+                transform: translateX(-30px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideInRight {
+            from {
+                transform: translateX(30px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes pulse-glow {
+
+            0%,
+            100% {
+                box-shadow: 0 0 20px rgba(6, 182, 212, 0.3);
+            }
+
+            50% {
+                box-shadow: 0 0 40px rgba(6, 182, 212, 0.6);
+            }
+        }
+
+        .number-sphere {
+            background: radial-gradient(circle at 30% 30%, #ffffff, #ccfbf1);
+            box-shadow: inset 0 0 20px rgba(255, 255, 255, 1), 0 10px 30px rgba(20, 184, 166, 0.3), 0 0 0 8px rgba(255, 255, 255, 0.3);
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            animation: pulse-glow 2s infinite;
+        }
+
+        .number-sphere::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(transparent, rgba(255, 255, 255, 0.8), transparent);
+            transform: rotate(45deg);
+            animation: shine 3s infinite;
+        }
+
+        @keyframes shine {
+            0% {
+                transform: translateX(-100%) rotate(45deg);
+            }
+
+            100% {
+                transform: translateX(100%) rotate(45deg);
+            }
+        }
+
+        .history-ball {
+            background: radial-gradient(circle at 35% 35%, #ffffff, #e2e8f0);
+            color: #0f766e;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border: 1px solid white;
+            animation: fadeInUp 0.3s ease;
+        }
+
+        .nav-link {
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .nav-link.active {
+            background: rgba(255, 255, 255, 0.6);
+            color: #0d9488;
+            font-weight: 700;
+        }
+
+        .nav-link.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60%;
+            height: 3px;
+            background: linear-gradient(90deg, #06b6d4, #14b8a6);
+            border-radius: 2px 2px 0 0;
+        }
+
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        .control-card {
+            animation: fadeInUp 0.5s ease;
+            transition: all 0.3s ease;
+        }
+
+        .control-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(6, 182, 212, 0.15);
+        }
+
+        @keyframes button-pulse {
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.05);
+            }
+        }
+
+        .draw-btn-active {
+            animation: button-pulse 2s infinite;
+        }
+
+        .setup-container {
+            animation: fadeInUp 0.6s ease;
+        }
+
+        .prize-input-row {
+            animation: slideInLeft 0.3s ease;
+        }
+
+        .prize-input-row input {
+            transition: all 0.2s ease;
+        }
+
+        .prize-input-row input:focus {
+            box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.2);
+            border-color: #14b8a6;
+        }
+
+        @keyframes shimmer {
+            0% {
+                background-position: -200% center;
+            }
+
+            100% {
+                background-position: 200% center;
+            }
+        }
+
+        .start-btn {
+            background: linear-gradient(90deg, #0d9488, #06b6d4, #14b8a6, #0d9488);
+            background-size: 200% auto;
+            transition: all 0.3s ease;
+        }
+
+        .start-btn:hover {
+            animation: shimmer 2s infinite linear;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(13, 148, 136, 0.4);
+        }
+
+        .start-btn:active {
+            transform: scale(0.97);
+        }
+
+        /* --- Room Code, QR, Join, Connection --- */
+        .room-code-display {
+            font-family: 'Courier New', monospace;
+            letter-spacing: 0.3em;
+            font-size: 2.5rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, #0d9488, #06b6d4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .room-code-input {
+            font-family: 'Courier New', monospace;
+            letter-spacing: 0.5em;
+            text-align: center;
+            text-transform: uppercase;
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .qr-container {
+            background: white;
+            padding: 12px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            display: inline-block;
+        }
+
+        .connection-badge {
+            background: linear-gradient(90deg, #10b981, #06b6d4);
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 4px 14px;
+            border-radius: 9999px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            animation: fadeInUp 0.5s ease;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4ade80;
+            animation: pulse-glow-dot 2s infinite;
+        }
+
+        @keyframes pulse-glow-dot {
+
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6);
+            }
+
+            50% {
+                box-shadow: 0 0 0 6px rgba(74, 222, 128, 0);
+            }
+        }
+
+        .divider-or {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 20px 0;
+        }
+
+        .divider-or::before,
+        .divider-or::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #99f6e4;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="audioControl" class="hidden"></div>
+
+    <!-- HEADER -->
+    <header class="fixed top-0 w-full z-50 glass px-6 py-3 flex justify-between items-center bg-white/30">
+        <div class="flex items-center gap-3">
+            <div
+                class="h-10 w-10 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center font-bold text-white shadow-md">
+                T</div>
+            <div class="flex flex-col">
+                <h1 class="text-xl font-bold tracking-wide text-teal-900">TAMBOLA</h1>
+                <span class="text-xs text-teal-700 uppercase tracking-widest font-semibold">Online Edition</span>
+            </div>
+        </div>
+        <nav id="mainNav" class="flex gap-2 text-sm font-medium" style="display:none">
+            <button onclick="switchScreen('player')"
+                class="nav-link px-4 py-2 rounded-lg transition text-teal-800 font-semibold"
+                id="navPlayer">Player</button>
+            <button onclick="switchScreen('host')"
+                class="nav-link px-4 py-2 rounded-lg transition text-teal-800 font-semibold" id="navHost">Host</button>
+        </nav>
+    </header>
+
+    <!-- ==================== SETUP SCREEN ==================== -->
+    <main id="setupScreen" class="screen pt-24 pb-16 px-4 flex-grow flex flex-col items-center justify-center">
+        <div class="setup-container max-w-lg w-full">
+            <div class="glass rounded-3xl p-8 md:p-10 bg-white/60">
+                <div class="text-center mb-8">
+                    <div
+                        class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 mb-4 shadow-lg float-anim">
+                        <span class="text-4xl">🎯</span>
+                    </div>
+                    <h2 class="text-2xl font-bold text-teal-900 mb-1">Game Setup</h2>
+                    <p class="text-teal-600 text-sm">Host a new game — define your prizes (1 to 10)</p>
+                </div>
+
+                <div id="prizeInputs" class="space-y-3 mb-6 max-h-[340px] overflow-y-auto pr-1 no-scrollbar"></div>
+
+                <button id="addPrizeBtn" onclick="addPrizeInput()"
+                    class="w-full py-3 rounded-xl border-2 border-dashed border-teal-300 text-teal-600 font-semibold text-sm hover:bg-teal-50 hover:border-teal-400 transition mb-6 flex items-center justify-center gap-2">
+                    <span class="text-lg">+</span> Add Prize
+                </button>
+
+                <button onclick="startGame()"
+                    class="start-btn w-full py-4 rounded-xl text-white font-bold text-lg shadow-lg shadow-teal-300/40 flex items-center justify-center gap-3">
+                    🎮 Host New Game
+                </button>
+
+                <button id="resumeBtn" onclick="resumeSavedGame()" style="display:none"
+                    class="w-full mt-3 py-3 rounded-xl bg-white/60 border border-teal-200 text-teal-700 font-semibold text-sm hover:bg-white/80 transition flex items-center justify-center gap-2">
+                    📂 Resume Previous Game
+                </button>
+
+                <!-- Separator -->
+                <div class="divider-or">
+                    <span class="text-teal-400 text-xs font-semibold uppercase">or</span>
+                </div>
+
+                <button onclick="switchScreen('join')"
+                    class="w-full py-3 rounded-xl bg-white/40 border-2 border-teal-300 text-teal-700 font-bold text-sm hover:bg-white/60 hover:border-teal-400 transition flex items-center justify-center gap-2">
+                    🎮 Join a Game
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- ==================== JOIN SCREEN ==================== -->
+    <main id="joinScreen" class="screen pt-24 pb-16 px-4 flex-grow flex flex-col items-center justify-center">
+        <div class="setup-container max-w-md w-full">
+            <div class="glass rounded-3xl p-8 md:p-10 bg-white/60">
+                <div class="text-center mb-8">
+                    <div
+                        class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 mb-4 shadow-lg float-anim">
+                        <span class="text-4xl">🎮</span>
+                    </div>
+                    <h2 class="text-2xl font-bold text-teal-900 mb-1">Join Game</h2>
+                    <p class="text-teal-600 text-sm">Enter the 6-character room code from your host</p>
+                </div>
+
+                <input id="joinCodeInput" type="text" maxlength="6" placeholder="ROOM CODE"
+                    class="room-code-input w-full px-6 py-4 rounded-xl border-2 border-teal-200 bg-white/70 text-teal-900 outline-none focus:border-teal-400 mb-6" />
+
+                <button onclick="joinGame()"
+                    class="start-btn w-full py-4 rounded-xl text-white font-bold text-lg shadow-lg shadow-teal-300/40 flex items-center justify-center gap-3">
+                    🎯 Join Game
+                </button>
+
+                <button onclick="backToSetup()"
+                    class="w-full mt-3 py-3 rounded-xl bg-white/40 border border-teal-200 text-teal-600 font-semibold text-sm hover:bg-white/60 transition text-center">
+                    ← Back to Setup
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- ==================== PLAYER SCREEN ==================== -->
+    <main id="playerScreen" class="screen pt-24 pb-16 px-4 flex-grow flex flex-col">
+
+        <!-- Connection Badge -->
+        <div class="flex justify-center mb-2">
+            <div class="connection-badge" id="playerBadge">
+                <span class="pulse-dot"></span>
+                <span>Room: <span id="playerRoomCode">------</span></span>
+            </div>
+        </div>
+
+        <div class="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6 flex-grow h-full">
+            <!-- LEFT: PRIZES -->
+            <div class="lg:col-span-3 flex flex-col gap-4 order-3 lg:order-1">
+                <div class="glass rounded-2xl p-5 h-full flex flex-col control-card">
+                    <h2
+                        class="text-teal-800 font-bold uppercase tracking-widest text-sm mb-4 border-b border-teal-200 pb-2 flex items-center gap-2">
+                        <span>🏆</span> Prizes
+                    </h2>
+                    <div id="prizesList"
+                        class="space-y-3 overflow-y-auto max-h-[400px] lg:max-h-full pr-2 no-scrollbar flex-grow"></div>
+                </div>
+            </div>
+
+            <!-- CENTER: THE STAGE -->
+            <div class="lg:col-span-6 flex flex-col items-center justify-center order-1 lg:order-2 min-h-[400px] py-10">
+                <div class="relative group scale-110">
+                    <div
+                        class="absolute inset-0 bg-teal-300 blur-[60px] opacity-30 rounded-full group-hover:opacity-50 transition duration-1000">
+                    </div>
+                    <div
+                        class="number-sphere w-72 h-72 md:w-80 md:h-80 rounded-full flex items-center justify-center float-anim">
+                        <div class="text-center z-10">
+                            <div id="mainNumberDisplay"
+                                class="text-[150px] font-black text-teal-600 drop-shadow-sm tabular-nums leading-none tracking-tighter">
+                                --</div>
+                        </div>
+                    </div>
+                </div>
+                <div id="spinIndicator"
+                    class="mt-12 h-2 w-32 bg-teal-100 rounded-full overflow-hidden opacity-0 transition-opacity duration-300">
+                    <div class="h-full bg-teal-500 w-full animate-pulse"></div>
+                </div>
+            </div>
+
+            <!-- RIGHT: HISTORY -->
+            <div class="lg:col-span-3 flex flex-col gap-4 order-2 lg:order-3">
+                <div class="glass rounded-2xl p-5 h-full control-card">
+                    <h2
+                        class="text-teal-800 font-bold uppercase tracking-widest text-sm mb-4 border-b border-teal-200 pb-2 flex items-center gap-2">
+                        <span>📜</span> Last 20
+                    </h2>
+                    <div id="historyGrid" class="grid grid-cols-4 gap-3 content-start"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ==================== HOST SCREEN ==================== -->
+    <main id="hostScreen" class="screen pt-24 pb-16 px-4 flex-grow flex flex-col">
+        <div class="max-w-6xl mx-auto w-full">
+            <div class="glass rounded-3xl p-6 md:p-8 bg-white/60 control-card">
+
+                <!-- Room Info Panel -->
+                <div id="roomInfoPanel"
+                    class="mb-6 bg-gradient-to-r from-teal-50 to-cyan-50 rounded-2xl p-6 border border-teal-100 flex flex-col md:flex-row items-center gap-6">
+                    <div class="flex-1 text-center md:text-left">
+                        <div class="text-xs text-teal-500 uppercase font-bold tracking-widest mb-2">📡 Room Code</div>
+                        <div id="roomCodeDisplay" class="room-code-display">------</div>
+                        <p class="text-teal-600 text-sm mt-2">Share this code or scan QR to join</p>
+                        <button onclick="copyRoomCode()"
+                            class="mt-3 px-4 py-2 bg-teal-500 text-white rounded-lg font-semibold text-sm hover:bg-teal-600 transition transform hover:scale-105 shadow-sm">
+                            📋 Copy Code
+                        </button>
+                        <button onclick="copyJoinLink()"
+                            class="mt-3 ml-2 px-4 py-2 bg-cyan-500 text-white rounded-lg font-semibold text-sm hover:bg-cyan-600 transition transform hover:scale-105 shadow-sm">
+                            🔗 Copy Link
+                        </button>
+                    </div>
+                    <div class="flex flex-col items-center">
+                        <div class="qr-container">
+                            <img id="qrCodeImg" src="" alt="QR Code" class="w-[180px] h-[180px]" style="display:none" />
+                            <div id="qrPlaceholder"
+                                class="w-[180px] h-[180px] flex items-center justify-center text-teal-300 text-sm">
+                                Loading QR...</div>
+                        </div>
+                        <span class="text-xs text-teal-500 mt-2 font-medium">Scan to Join</span>
+                    </div>
+                </div>
+
+                <div class="flex justify-between items-center mb-8 border-b border-teal-100 pb-4">
+                    <h2 class="text-2xl font-bold text-teal-900">🎮 Host Control Panel</h2>
+                    <div class="flex gap-3">
+                        <button onclick="resetNumbersOnly()"
+                            class="bg-amber-100 hover:bg-amber-200 text-amber-700 border border-amber-200 px-4 py-2 rounded-lg font-semibold transition shadow-sm hover:shadow-md transform hover:scale-105 text-sm">Reset
+                            Numbers</button>
+                        <button onclick="newGame()"
+                            class="bg-red-100 hover:bg-red-200 text-red-600 border border-red-200 px-4 py-2 rounded-lg font-semibold transition shadow-sm hover:shadow-md transform hover:scale-105 text-sm">New
+                            Game</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    <!-- Left Controls -->
+                    <div class="lg:col-span-4 space-y-6">
+                        <div class="bg-white/50 rounded-2xl p-6 border border-white shadow-sm control-card">
+                            <div class="text-xs text-teal-600 uppercase font-bold mb-4 tracking-wider">🎲 Game Controls
+                            </div>
+                            <div class="flex gap-4 mb-6">
+                                <button id="drawBtn" onclick="hostDrawNumber()"
+                                    class="flex-1 bg-gradient-to-r from-teal-400 to-teal-500 text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-teal-200 transition transform active:scale-95 hover:brightness-105 draw-btn-active">
+                                    🎲 Draw
+                                </button>
+                                <button id="flashBtn" onclick="hostFlashNumber()" disabled
+                                    class="flex-1 bg-slate-200 text-slate-400 py-4 rounded-xl font-bold text-lg transition cursor-not-allowed border border-slate-300">
+                                    📢 Flash
+                                </button>
+                            </div>
+                            <div class="flex flex-col items-center bg-teal-50 p-4 rounded-xl border border-teal-100">
+                                <span class="text-teal-500 text-xs uppercase font-bold mb-1">Pending Number</span>
+                                <span id="hostDrawnDisplay"
+                                    class="text-5xl font-mono font-bold text-yellow-500 tracking-tighter drop-shadow-sm">--</span>
+                            </div>
+                        </div>
+                        <div
+                            class="bg-white/50 rounded-2xl p-6 border border-white shadow-sm max-h-[400px] overflow-y-auto control-card">
+                            <div class="text-xs text-teal-600 uppercase font-bold mb-4 tracking-wider">🏆 Prize Manager
+                            </div>
+                            <div id="hostPrizeList" class="space-y-2"></div>
+                        </div>
+                    </div>
+                    <!-- Right Master Board -->
+                    <div class="lg:col-span-8 bg-white/50 rounded-2xl p-6 border border-white shadow-sm control-card">
+                        <div class="flex justify-between items-center mb-4">
+                            <div class="text-xs text-teal-600 uppercase font-bold tracking-wider">📊 Master Board</div>
+                            <div class="text-xs text-teal-500 font-semibold" id="calledCount">0 / 90 called</div>
+                        </div>
+                        <div id="masterBoard" class="grid grid-cols-10 gap-1.5"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="fixed bottom-0 w-full glass border-t border-white/40 py-3 z-40 bg-white/60 backdrop-blur-md">
+        <div
+            class="max-w-7xl mx-auto px-6 flex justify-center items-center text-sm text-teal-800 font-medium tracking-wide">
+            Made with ❤️ by Ordnance Fraternity
+        </div>
+    </footer>
+
+    <!-- TOAST -->
+    <div id="toast"
+        class="fixed top-24 right-5 bg-teal-800 border border-teal-600 text-white px-6 py-3 rounded-lg shadow-2xl transform translate-x-[150%] transition-transform duration-300 z-50 flex items-center gap-3">
+        <span class="text-xl">ℹ️</span>
+        <span id="toastMsg" class="font-medium">Notification</span>
+    </div>
+
+    <script>
+        /* ==================================================================
+           🚀 SUPABASE CONFIGURATION
+           ==================================================================
+           INSTRUCTIONS:
+           1. Go to https://database.new to create a Supabase project
+           2. Navigate to SQL Editor and run the recommended SQL block
+           3. Navigate to Project Settings -> API
+           4. Copy the Project URL and anon public key below
+           ================================================================== */
+        const SUPABASE_URL = "https://wgfwxckwviqnkieqjhuc.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndnZnd4Y2t3dmlxbmtpZXFqaHVjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NDk5MDIsImV4cCI6MjA5MTEyNTkwMn0.-9gLs9r0Fdk_VckVeGztSEOJjaT6rqU8CCU4UFE4Yu4";
+
+        /* ==================================================================
+           SUPABASE INITIALIZATION
+           ================================================================== */
+        let supabaseClient = null;
+        let dbReady = false;
+
+        try {
+            if (SUPABASE_URL && SUPABASE_URL !== 'YOUR_SUPABASE_URL') {
+                supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                dbReady = true;
+                console.log('✅ Supabase connected');
+            } else {
+                console.warn('⚠️ Supabase not configured — fill in your Supabase creds');
+            }
+        } catch (e) {
+            console.error('Supabase init failed:', e);
+        }
+
+        /* ==================================================================
+           AUDIO SYSTEM
+           ================================================================== */
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playTickSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.05);
+            gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.05);
+        }
+
+        function playChimeSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(1760, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 1.5);
+        }
+
+        /* ==================================================================
+           GAME STATE
+           ================================================================== */
+        const STORAGE_KEY = 'tambola_game_state';
+        const SESSION_KEY = 'tambola_session';
+
+        let gameState = {
+            calledNumbers: [],
+            currentNumber: null,
+            drawnNumber: null,
+            prizes: []
+        };
+
+        let roomCode = null;
+        let isHost = false;
+        let realTimeChannel = null;
+        let spinInterval = null;
+        let isSpinning = false;
+
+        /* ==================================================================
+           ROOM CODE GENERATION
+           ================================================================== */
+        function generateRoomCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let code = '';
+            for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+            return code;
+        }
+
+        /* ==================================================================
+           SUPABASE SYNC
+           ================================================================== */
+        async function fetchGameState(code) {
+            if (!dbReady) return null;
+            const { data, error } = await supabaseClient
+                .from('games')
+                .select('state')
+                .eq('room_code', code)
+                .single();
+
+            if (error || !data) return null;
+            return data.state;
+        }
+
+        async function subscribeToRoom(code) {
+            if (!dbReady) return;
+
+            // Unsubscribe previous
+            if (realTimeChannel) {
+                supabaseClient.removeChannel(realTimeChannel);
+                realTimeChannel = null;
+            }
+
+            roomCode = code;
+
+            // Initial fetch
+            const initialState = await fetchGameState(code);
+            if (!initialState) {
+                if (!isHost) {
+                    showToast('⚠️ Game has ended or room not found!');
+                    backToSetup();
+                }
+                return;
+            }
+
+            updateLocalState(initialState);
+
+            // Subscribe to updates for this room
+            realTimeChannel = supabaseClient.channel('room-update')
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'UPDATE',
+                        schema: 'public',
+                        table: 'games',
+                        filter: `room_code=eq.${code}`
+                    },
+                    (payload) => {
+                        const data = payload.new.state;
+                        updateLocalState(data);
+                    }
+                )
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'DELETE',
+                        schema: 'public',
+                        table: 'games',
+                        filter: `room_code=eq.${code}`
+                    },
+                    (payload) => {
+                        if (!isHost) {
+                            showToast('⚠️ Host has ended the game.');
+                            backToSetup();
+                        }
+                    }
+                )
+                .subscribe();
+        }
+
+        function updateLocalState(data) {
+            gameState = {
+                calledNumbers: data.calledNumbers || [],
+                currentNumber: data.currentNumber || null,
+                drawnNumber: data.drawnNumber || null,
+                prizes: data.prizes || []
+            };
+            // Cache locally
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
+            renderAll();
+        }
+
+        async function saveGame() {
+            // Write to Supabase DB
+            if (roomCode && dbReady) {
+                const { error } = await supabaseClient
+                    .from('games')
+                    .update({ state: gameState })
+                    .eq('room_code', roomCode);
+
+                if (error) {
+                    console.error('Save error:', error);
+                    showToast('⚠️ Failed to sync!');
+                }
+            }
+            // Cache locally
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
+            } catch (e) { /* ignore */ }
+        }
+
+        function saveSession() {
+            localStorage.setItem(SESSION_KEY, JSON.stringify({ roomCode, isHost }));
+        }
+
+        function loadSession() {
+            try {
+                const d = localStorage.getItem(SESSION_KEY);
+                return d ? JSON.parse(d) : null;
+            } catch (e) { return null; }
+        }
+
+        function clearSession() {
+            localStorage.removeItem(SESSION_KEY);
+            localStorage.removeItem(STORAGE_KEY);
+            if (realTimeChannel) {
+                supabaseClient.removeChannel(realTimeChannel);
+                realTimeChannel = null;
+            }
+            roomCode = null;
+            isHost = false;
+        }
+
+        /* ==================================================================
+           INIT & ROUTING
+           ================================================================== */
+        async function init() {
+            const hash = location.hash;
+
+            // Auto-join via QR / link: #join/ROOMCODE
+            if (hash.startsWith('#join/')) {
+                const code = hash.substring(6).toUpperCase().replace(/[^A-Z0-9]/g, '');
+                if (code.length === 6 && dbReady) {
+                    await autoJoinGame(code);
+                    initSetupScreen();
+                    return;
+                }
+            }
+
+            // Try to resume saved session
+            const session = loadSession();
+            if (session && session.roomCode && dbReady) {
+                roomCode = session.roomCode;
+                isHost = session.isHost;
+
+                // Verify room still exists
+                const state = await fetchGameState(roomCode);
+                if (state) {
+                    await subscribeToRoom(roomCode);
+                    saveSession();
+                    showNav();
+                    switchScreen(isHost ? 'host' : 'player');
+                    updateRoomDisplay();
+                    showToast('📂 Reconnected to room ' + roomCode);
+                } else {
+                    clearSession();
+                    switchScreen('setup');
+                    showToast('⚠️ Previous room no longer exists.');
+                }
+            } else {
+                switchScreen('setup');
+            }
+
+            initSetupScreen();
+            renderAll();
+        }
+
+        function showNav() {
+            const nav = document.getElementById('mainNav');
+            nav.style.display = '';
+            // Players should not see Host tab
+            document.getElementById('navHost').style.display = isHost ? '' : 'none';
+        }
+
+        function hideNav() {
+            document.getElementById('mainNav').style.display = 'none';
+        }
+
+        function switchScreen(name) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            const target = document.getElementById(`${name}Screen`);
+            if (target) target.classList.add('active');
+
+            document.querySelectorAll('.nav-link').forEach(n => n.classList.remove('active'));
+            const navBtn = document.getElementById(`nav${name.charAt(0).toUpperCase() + name.slice(1)}`);
+            if (navBtn) navBtn.classList.add('active');
+
+            if (name === 'setup' || name === 'join') {
+                hideNav();
+            }
+        }
+
+        /* ==================================================================
+           SETUP SCREEN — Prize Configuration
+           ================================================================== */
+        const DEFAULT_PRIZES = ['Full House', 'Top Line', 'Bottom Line'];
+        const MAX_PRIZES = 10;
+
+        function initSetupScreen() {
+            const container = document.getElementById('prizeInputs');
+            container.innerHTML = '';
+
+            const saved = loadSession();
+            // Pre-fill from cached state if available
+            let prizeNames = DEFAULT_PRIZES;
+            try {
+                const cached = localStorage.getItem(STORAGE_KEY);
+                if (cached) {
+                    const parsed = JSON.parse(cached);
+                    if (parsed.prizes && parsed.prizes.length > 0) {
+                        prizeNames = parsed.prizes.map(p => p.name);
+                    }
+                }
+            } catch (e) { /* use defaults */ }
+
+            prizeNames.forEach(name => addPrizeInput(name));
+            updateAddBtn();
+
+            // Show resume button if session exists
+            const resumeBtn = document.getElementById('resumeBtn');
+            if (saved && saved.roomCode) {
+                resumeBtn.style.display = '';
+            } else {
+                resumeBtn.style.display = 'none';
+            }
+        }
+
+        function addPrizeInput(prefill = '') {
+            const container = document.getElementById('prizeInputs');
+            const count = container.children.length;
+            if (count >= MAX_PRIZES) return;
+
+            const row = document.createElement('div');
+            row.className = 'prize-input-row flex items-center gap-3';
+            row.style.animationDelay = `${count * 0.05}s`;
+
+            const num = document.createElement('span');
+            num.className = 'text-teal-400 font-bold text-sm w-6 text-right flex-shrink-0';
+            num.textContent = `${count + 1}.`;
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.maxLength = 30;
+            input.placeholder = `Prize ${count + 1}`;
+            input.value = prefill;
+            input.className = 'flex-1 px-4 py-3 rounded-xl border border-teal-200 bg-white/70 text-teal-900 font-medium text-sm outline-none focus:border-teal-400 placeholder-teal-300';
+
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.innerHTML = '✕';
+            delBtn.className = 'w-8 h-8 rounded-full bg-red-100 text-red-400 hover:bg-red-200 hover:text-red-600 transition text-xs font-bold flex items-center justify-center flex-shrink-0';
+            delBtn.onclick = () => { row.remove(); renumberPrizeInputs(); updateAddBtn(); };
+
+            row.appendChild(num);
+            row.appendChild(input);
+            row.appendChild(delBtn);
+            container.appendChild(row);
+            updateAddBtn();
+            input.focus();
+        }
+
+        function renumberPrizeInputs() {
+            document.querySelectorAll('#prizeInputs .prize-input-row').forEach((row, i) => {
+                row.querySelector('span').textContent = `${i + 1}.`;
+                row.querySelector('input').placeholder = `Prize ${i + 1}`;
+            });
+        }
+
+        function updateAddBtn() {
+            const count = document.querySelectorAll('#prizeInputs .prize-input-row').length;
+            const btn = document.getElementById('addPrizeBtn');
+            if (count >= MAX_PRIZES) {
+                btn.disabled = true;
+                btn.classList.add('opacity-40', 'cursor-not-allowed');
+            } else {
+                btn.disabled = false;
+                btn.classList.remove('opacity-40', 'cursor-not-allowed');
+            }
+            const delBtns = document.querySelectorAll('#prizeInputs .prize-input-row button');
+            delBtns.forEach(b => {
+                b.style.visibility = (document.querySelectorAll('#prizeInputs .prize-input-row').length <= 1) ? 'hidden' : '';
+            });
+        }
+
+        /* ==================================================================
+           START GAME (Host)
+           ================================================================== */
+        async function startGame() {
+            if (!dbReady) {
+                showToast('⚠️ Supabase not configured! Edit the config in the HTML file.');
+                return;
+            }
+
+            const inputs = document.querySelectorAll('#prizeInputs .prize-input-row input');
+            const names = [];
+            inputs.forEach(inp => { const v = inp.value.trim(); if (v) names.push(v); });
+
+            if (names.length === 0) {
+                showToast('⚠️ Enter at least one prize name!');
+                return;
+            }
+
+            const code = generateRoomCode();
+
+            gameState = {
+                calledNumbers: [],
+                currentNumber: null,
+                drawnNumber: null,
+                prizes: names.map((name, i) => ({ id: `prize_${i}`, name, status: 'OPEN' }))
+            };
+
+            roomCode = code;
+            isHost = true;
+
+            // Write to Supabase table
+            const { error } = await supabaseClient
+                .from('games')
+                .insert({ room_code: code, state: gameState });
+
+            if (error) {
+                console.error('Create game error:', error);
+                showToast('⚠️ Failed to create game. Did you run the SQL script?');
+                return;
+            }
+
+            await subscribeToRoom(code);
+            saveSession();
+            showNav();
+            switchScreen('host');
+            updateRoomDisplay();
+            renderAll();
+            showToast(`🎉 Game created! Room: ${code}`);
+        }
+
+        async function resumeSavedGame() {
+            const session = loadSession();
+            if (session && session.roomCode && dbReady) {
+                roomCode = session.roomCode;
+                isHost = session.isHost;
+                await subscribeToRoom(roomCode);
+                saveSession();
+                showNav();
+                switchScreen(isHost ? 'host' : 'player');
+                updateRoomDisplay();
+                renderAll();
+                showToast('📂 Game resumed!');
+            }
+        }
+
+        /* ==================================================================
+           JOIN GAME (Player)
+           ================================================================== */
+        async function joinGame() {
+            if (!dbReady) {
+                showToast('⚠️ Supabase not configured!');
+                return;
+            }
+
+            const input = document.getElementById('joinCodeInput');
+            const code = input.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+            if (code.length !== 6) {
+                showToast('⚠️ Enter a valid 6-character room code!');
+                return;
+            }
+
+            // Verify room exists
+            const state = await fetchGameState(code);
+            if (!state) {
+                showToast('⚠️ Room not found! Check the code.');
+                return;
+            }
+
+            roomCode = code;
+            isHost = false;
+            await subscribeToRoom(code);
+            saveSession();
+            showNav();
+            switchScreen('player');
+            updateRoomDisplay();
+            showToast(`✅ Joined room ${code}!`);
+        }
+
+        async function autoJoinGame(code) {
+            if (!dbReady) return;
+
+            const state = await fetchGameState(code);
+            if (!state) {
+                showToast('⚠️ Room not found!');
+                switchScreen('join');
+                return;
+            }
+            roomCode = code;
+            isHost = false;
+            await subscribeToRoom(code);
+            saveSession();
+            showNav();
+            switchScreen('player');
+            updateRoomDisplay();
+            showToast(`✅ Joined room ${code}!`);
+        }
+
+        function backToSetup() {
+            clearSession();
+            hideNav();
+            initSetupScreen();
+            switchScreen('setup');
+            window.history.replaceState(null, '', location.pathname);
+        }
+
+        /* ==================================================================
+           ROOM DISPLAY (Code + QR)
+           ================================================================== */
+        function updateRoomDisplay() {
+            // Host screen room code
+            const rcDisplay = document.getElementById('roomCodeDisplay');
+            if (rcDisplay) rcDisplay.textContent = roomCode || '------';
+
+            // Player screen badge
+            const prc = document.getElementById('playerRoomCode');
+            if (prc) prc.textContent = roomCode || '------';
+
+            // QR Code
+            generateQR();
+        }
+
+        function generateQR() {
+            if (!roomCode) return;
+            try {
+                const baseUrl = window.location.href.split('#')[0];
+                const joinUrl = baseUrl + '#join/' + roomCode;
+
+                const qr = qrcode(0, 'M');
+                qr.addData(joinUrl);
+                qr.make();
+
+                const img = document.getElementById('qrCodeImg');
+                const placeholder = document.getElementById('qrPlaceholder');
+                img.src = qr.createDataURL(6, 2);
+                img.style.display = '';
+                if (placeholder) placeholder.style.display = 'none';
+            } catch (e) {
+                console.error('QR generation error:', e);
+            }
+        }
+
+        function copyRoomCode() {
+            if (!roomCode) return;
+            navigator.clipboard.writeText(roomCode).then(() => {
+                showToast('📋 Room code copied!');
+            }).catch(() => {
+                showToast('Code: ' + roomCode);
+            });
+        }
+
+        function copyJoinLink() {
+            if (!roomCode) return;
+            const baseUrl = window.location.href.split('#')[0];
+            const joinUrl = baseUrl + '#join/' + roomCode;
+            navigator.clipboard.writeText(joinUrl).then(() => {
+                showToast('🔗 Join link copied!');
+            }).catch(() => {
+                showToast('Link: ' + joinUrl);
+            });
+        }
+
+        /* ==================================================================
+           UI RENDERING
+           ================================================================== */
+        function renderAll() {
+            renderPlayerScreen();
+            renderHostScreen();
+        }
+
+        function renderPlayerScreen() {
+            const mainDisplay = document.getElementById('mainNumberDisplay');
+            const spinIndicator = document.getElementById('spinIndicator');
+
+            if (gameState.drawnNumber && gameState.drawnNumber !== gameState.currentNumber) {
+                if (!isSpinning) startSpinning();
+                spinIndicator.classList.remove('opacity-0');
+            } else {
+                if (isSpinning) stopSpinning(gameState.currentNumber);
+                spinIndicator.classList.add('opacity-0');
+                if (gameState.currentNumber) {
+                    mainDisplay.textContent = gameState.currentNumber;
+                    mainDisplay.classList.remove('opacity-50');
+                } else {
+                    mainDisplay.textContent = "--";
+                }
+            }
+
+            // Prizes
+            const prizeList = document.getElementById('prizesList');
+            prizeList.innerHTML = '';
+            gameState.prizes.forEach((p, idx) => {
+                const div = document.createElement('div');
+                const isClaimed = p.status === "CLAIMED";
+                const isSpecial = (idx < 2);
+                if (isSpecial) {
+                    div.className = `special-prize mb-2 ${isClaimed ? 'opacity-50 grayscale' : ''}`;
+                } else {
+                    div.className = `prize-card-basic p-3 rounded-xl flex justify-between items-center mb-2 ${isClaimed ? 'claimed' : ''}`;
+                }
+                div.style.animationDelay = `${idx * 0.05}s`;
+                div.innerHTML = `
+                    <span class="font-bold text-sm ${isSpecial ? 'text-white' : 'text-teal-900'}">${p.name}</span>
+                    <span class="text-[10px] font-mono px-2 py-1 rounded bg-white/30 tracking-wider ${isSpecial ? 'text-white' : 'text-teal-700'} font-bold">${p.status}</span>
+                `;
+                prizeList.appendChild(div);
+            });
+
+            // History
+            const historyGrid = document.getElementById('historyGrid');
+            historyGrid.innerHTML = '';
+            const history = gameState.calledNumbers.slice(0, 20);
+            history.forEach((num, idx) => {
+                const ball = document.createElement('div');
+                const isLatest = (num === gameState.currentNumber);
+                ball.className = `history-ball h-12 w-12 rounded-full flex items-center justify-center font-bold text-lg shadow-sm transition-transform ${isLatest ? 'border-4 border-teal-400 scale-110 z-10 ring-2 ring-teal-200' : 'scale-100'}`;
+                ball.style.animationDelay = `${idx * 0.03}s`;
+                ball.textContent = num;
+                historyGrid.appendChild(ball);
+            });
+        }
+
+        // Animation
+        function startSpinning() {
+            if (isSpinning) return;
+            isSpinning = true;
+            const display = document.getElementById('mainNumberDisplay');
+            spinInterval = setInterval(() => {
+                display.textContent = Math.floor(Math.random() * 90) + 1;
+                display.classList.add('opacity-50', 'blur-[1px]');
+                playTickSound();
+            }, 80);
+        }
+
+        function stopSpinning(finalNumber) {
+            if (!isSpinning) return;
+            isSpinning = false;
+            clearInterval(spinInterval);
+            const display = document.getElementById('mainNumberDisplay');
+            display.classList.remove('opacity-50', 'blur-[1px]');
+            display.textContent = finalNumber || "--";
+            playChimeSound();
+            display.parentElement.classList.remove('pop-in');
+            void display.parentElement.offsetWidth;
+            display.parentElement.classList.add('pop-in');
+        }
+
+        function renderHostScreen() {
+            const hostBoard = document.getElementById('masterBoard');
+            hostBoard.innerHTML = '';
+            for (let i = 1; i <= 90; i++) {
+                const d = document.createElement('div');
+                const isCalled = gameState.calledNumbers.includes(i);
+                const isCurrent = gameState.currentNumber === i;
+                let classes = "number-cell h-8 rounded flex items-center justify-center text-sm transition-colors cursor-default ";
+                if (isCurrent) classes += "current";
+                else if (isCalled) classes += "called";
+                else classes += "uncalled";
+                d.className = classes;
+                d.textContent = i;
+                hostBoard.appendChild(d);
+            }
+
+            const calledCountEl = document.getElementById('calledCount');
+            if (calledCountEl) calledCountEl.textContent = `${gameState.calledNumbers.length} / 90 called`;
+
+            const drawBtn = document.getElementById('drawBtn');
+            const flashBtn = document.getElementById('flashBtn');
+            const drawnDisplay = document.getElementById('hostDrawnDisplay');
+
+            if (gameState.drawnNumber && gameState.drawnNumber !== gameState.currentNumber) {
+                drawBtn.disabled = true;
+                drawBtn.classList.remove('draw-btn-active');
+                drawBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                flashBtn.disabled = false;
+                flashBtn.classList.remove('bg-slate-200', 'text-slate-400', 'cursor-not-allowed', 'border-slate-300');
+                flashBtn.classList.add('bg-yellow-400', 'text-white', 'hover:bg-yellow-500', 'shadow-lg', 'shadow-yellow-200', 'draw-btn-active');
+                drawnDisplay.textContent = gameState.drawnNumber;
+            } else {
+                drawBtn.disabled = false;
+                drawBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                drawBtn.classList.add('draw-btn-active');
+                flashBtn.disabled = true;
+                flashBtn.className = "flex-1 bg-slate-200 text-slate-400 py-4 rounded-xl font-bold text-lg transition cursor-not-allowed border border-slate-300";
+                drawnDisplay.textContent = "--";
+            }
+
+            // Prize Controls
+            const hostPrizeList = document.getElementById('hostPrizeList');
+            hostPrizeList.innerHTML = '';
+            gameState.prizes.forEach((p, idx) => {
+                const row = document.createElement('div');
+                row.className = "flex items-center justify-between bg-white p-2 rounded mb-2 border border-gray-100 shadow-sm transition-all hover:shadow-md";
+                row.style.animation = 'fadeInUp 0.5s ease forwards';
+                row.style.animationDelay = `${idx * 0.05}s`;
+                row.innerHTML = `
+                    <span class="text-sm font-medium ${p.status === 'CLAIMED' ? 'text-teal-600 line-through opacity-60' : 'text-teal-900'}">${p.name}</span>
+                    <button onclick="togglePrize(${idx})" class="text-xs px-3 py-1.5 rounded font-bold transition transform hover:scale-105 ${p.status === 'OPEN' ? 'bg-teal-500 hover:bg-teal-600 text-white shadow-sm' : 'bg-gray-300 text-gray-600 hover:bg-gray-400'}">
+                        ${p.status === 'OPEN' ? '✓ WIN' : '↺ UNDO'}
+                    </button>
+                `;
+                hostPrizeList.appendChild(row);
+            });
+        }
+
+        /* ==================================================================
+           HOST ACTIONS
+           ================================================================== */
+        function hostDrawNumber() {
+            const available = [];
+            for (let i = 1; i <= 90; i++) {
+                if (!gameState.calledNumbers.includes(i) && i !== gameState.drawnNumber) {
+                    available.push(i);
+                }
+            }
+            if (available.length === 0) return showToast("All 90 numbers have been called!");
+
+            const nextNum = available[Math.floor(Math.random() * available.length)];
+            gameState.drawnNumber = nextNum;
+            saveGame();
+            renderHostScreen();
+            showToast(`Number ${nextNum} drawn!`);
+        }
+
+        function hostFlashNumber() {
+            if (!gameState.drawnNumber) return;
+            const num = gameState.drawnNumber;
+            gameState.currentNumber = num;
+            gameState.calledNumbers.unshift(num);
+            saveGame();
+            renderAll();
+            showToast(`Number ${num} flashed!`);
+        }
+
+        function togglePrize(index) {
+            const p = gameState.prizes[index];
+            p.status = p.status === "OPEN" ? "CLAIMED" : "OPEN";
+            saveGame();
+            renderAll();
+            showToast(`${p.name} ${p.status === 'CLAIMED' ? 'claimed! 🏆' : 'reopened'}`);
+        }
+
+        function resetNumbersOnly() {
+            if (!confirm("Reset all called numbers? Prize statuses will also be reset, but prize names are kept.")) return;
+            gameState.calledNumbers = [];
+            gameState.currentNumber = null;
+            gameState.drawnNumber = null;
+            gameState.prizes = gameState.prizes.map(p => ({ ...p, status: "OPEN" }));
+            saveGame();
+            renderAll();
+            showToast("🔄 Numbers reset! Prizes kept.");
+        }
+
+        async function newGame() {
+            if (!confirm("Start a completely new game? This will clear everything and return to setup.")) return;
+            // Delete Supabase room
+            if (roomCode && dbReady) {
+                await supabaseClient.from('games').delete().eq('room_code', roomCode);
+            }
+            clearSession();
+            gameState = { calledNumbers: [], currentNumber: null, drawnNumber: null, prizes: [] };
+            hideNav();
+            initSetupScreen();
+            switchScreen('setup');
+            window.history.replaceState(null, '', location.pathname);
+            showToast("🆕 Ready for a new game!");
+        }
+
+        /* ==================================================================
+           UTILS
+           ================================================================== */
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            const m = document.getElementById('toastMsg');
+            m.textContent = msg;
+            t.classList.remove('translate-x-[150%]');
+            setTimeout(() => t.classList.add('translate-x-[150%]'), 3000);
+        }
+
+        // Start
+        init();
+
+    </script>
+</body>
+
+</html>
